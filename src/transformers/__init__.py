@@ -546,6 +546,7 @@ if is_torch_available():
             "BartModel",
             "BartPretrainedModel",
             "PretrainedBartModel",
+            "DoubleEncodedBartForConditionalGeneration"
         ]
     )
     _import_structure["models.bert"].extend(
@@ -2009,6 +2010,7 @@ if TYPE_CHECKING:
             BartModel,
             BartPretrainedModel,
             PretrainedBartModel,
+            DoubleEncodedBartForConditionalGeneration
         )
         from .models.bert import (
             BERT_PRETRAINED_MODEL_ARCHIVE_LIST,

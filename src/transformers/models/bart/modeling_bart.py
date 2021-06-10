@@ -819,6 +819,65 @@ class BartEncoder(BartPretrainedModel):
             last_hidden_state=hidden_states, hidden_states=encoder_states, attentions=all_attentions
         )
 
+class BartDoubleEncoder(BartPretrainedModel):
+    """
+    Transformer wrapper that independently encodes two separate input sources, and then finally applies a cross
+    attention to both encodings
+    
+    Args:
+        config: BartConfig
+        embed_tokens (torch.nn.Embedding): input embedding
+    """
+
+    def __init__(self, config: BartConfig, embed_tokens: Optional[torch.nn.Embedding] = None):
+        super().__init__(config)
+        self.p_encoder = BartEncoder(config, embed_tokens)
+        self.r_encoder = BartEncoder(config, embed_tokens)
+        self.cross_attn = torch.nn.MultiheadAttention(
+            embed_dim=config.d_model,
+            num_heads=config.encoder_attention_heads,
+            dropout=config.attention_dropout,
+        )
+        self.dropout = config.dropout
+        self.attn_norm = torch.nn.LayerNorm(config.d_model)
+        self.activation_dropout = config.activation_dropout
+        self.fc1 = torch.nn.Linear(config.d_model, config.decoder_ffn_dim)
+        self.fc2 = torch.nn.Linear(config.decoder_ffn_dim, config.d_model)
+        self.final_layer_norm = torch.nn.LayerNorm(config.d_model)
+
+        self.init_weights()
+
+    def forward(self, input_ids=None, attention_mask=None, head_mask=None, inputs_embeds=None, output_attentions=None,
+            output_hidden_states=None, return_dict=None):
+        p_input_ids = input_ids[0]
+        r_input_ids = input_ids[1]
+        p_attention_mask = attention_mask
+        r_attention_mask = input_ids[2]
+        p_encoder_outputs = self.p_encoder(p_input_ids, attention_mask=p_attention_mask)[0]
+        r_encoder_outputs = self.r_encoder(r_input_ids, attention_mask=r_attention_mask)[0]
+        query = p_encoder_outputs.transpose(0, 1)
+        kv = r_encoder_outputs.transpose(0, 1)
+        attn_output = self.cross_attn(query, kv, kv)[0].transpose(0,1)
+
+        residual = p_encoder_outputs
+        hidden_states = F.dropout(attn_output, p=self.dropout, training=self.training)
+        hidden_states = residual + hidden_states
+        hidden_states = self.attn_norm(hidden_states)
+        residual = hidden_states
+        hidden_states = F.gelu(self.fc1(hidden_states))
+        hidden_states = F.dropout(hidden_states, p=self.activation_dropout, training=self.training)
+        hidden_states = self.fc2(hidden_states)
+        hidden_states = F.dropout(hidden_states, p=self.dropout, training=self.training)
+        hidden_states = residual + hidden_states
+        hidden_states = self.final_layer_norm(hidden_states)
+
+        if hidden_states.dtype == torch.float16 and (
+            torch.isinf(hidden_states).any() or torch.isnan(hidden_states).any()
+        ):
+            clamp_value = torch.finfo(hidden_states.dtype).max - 1000
+            hidden_states = torch.clamp(hidden_states, min=-clamp_value, max=clamp_value)
+        return (hidden_states,)
+
 
 class BartDecoder(BartPretrainedModel):
     """
@@ -1371,6 +1430,19 @@ class BartForConditionalGeneration(BartPretrainedModel):
                 tuple(past_state.index_select(0, beam_idx) for past_state in layer_past[:2]) + layer_past[2:],
             )
         return reordered_past
+
+@add_start_docstrings(
+    """
+    Bart for Conditional Generation that incorporates two input sources for encoding layer
+    """
+    BART_START_DOCSTRING,
+)
+class DoubleEncodedBartForConditionalGeneration(BartForConditionalGeneration):
+    def __init__(self, config: BartConfig):
+        super().__init__(config)
+        # replace encoder with double encoder
+        self.model.encoder = DoubleEncoder(config, self.model.shared)
+        self.init_weights()
 
 
 @add_start_docstrings(
