@@ -1434,14 +1434,14 @@ class BartForConditionalGeneration(BartPretrainedModel):
 @add_start_docstrings(
     """
     Bart for Conditional Generation that incorporates two input sources for encoding layer
-    """
+    """,
     BART_START_DOCSTRING,
 )
 class DoubleEncodedBartForConditionalGeneration(BartForConditionalGeneration):
     def __init__(self, config: BartConfig):
         super().__init__(config)
         # replace encoder with double encoder
-        self.model.encoder = DoubleEncoder(config, self.model.shared)
+        self.model.encoder = BartDoubleEncoder(config, self.model.shared)
         self.init_weights()
 
 
