@@ -84,7 +84,6 @@ def _make_causal_mask(input_ids_shape: torch.Size, dtype: torch.dtype, past_key_
     mask_cond = torch.arange(mask.size(-1))
     mask.masked_fill_(mask_cond < (mask_cond + 1).view(mask.size(-1), 1), 0)
     mask = mask.to(dtype)
-
     if past_key_values_length > 0:
         mask = torch.cat([torch.zeros(tgt_len, past_key_values_length, dtype=dtype), mask], dim=-1)
     return mask[None, None, :, :].expand(bsz, 1, tgt_len, tgt_len + past_key_values_length)
@@ -876,8 +875,12 @@ class BartDoubleEncoder(BartPretrainedModel):
         ):
             clamp_value = torch.finfo(hidden_states.dtype).max - 1000
             hidden_states = torch.clamp(hidden_states, min=-clamp_value, max=clamp_value)
-        return (hidden_states,)
-
+        
+        if not return_dict:
+            return (hidden_states,)
+        return BaseModelOutput(
+            last_hidden_state=hidden_states, hidden_states=None, attentions=None
+        )
 
 class BartDecoder(BartPretrainedModel):
     """
