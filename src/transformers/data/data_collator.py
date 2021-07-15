@@ -270,16 +270,24 @@ class DataCollatorForSeq2Seq:
     label_pad_token_id: int = -100
 
     def __call__(self, features):
-        labels = [feature["labels"] for feature in features] if "labels" in features[0].keys() else None
-        # We have to pad the labels before calling `tokenizer.pad` as this method won't pad them and needs them of the
-        # same length to return tensors.
-        if labels is not None:
-            max_label_length = max(len(l) for l in labels)
+        for key in features[0].keys():
+            if key == 'input_ids' or key == 'attention_mask':
+                continue
+            values = [feature[key] for feature in features]
+            # We have to pad before calling `tokenizer.pad` as this method won't pad them and needs them of the
+            # same length to return tensors.
+            max_sequence_length = max(len(l) for l in values)
             padding_side = self.tokenizer.padding_side
             for feature in features:
-                remainder = [self.label_pad_token_id] * (max_label_length - len(feature["labels"]))
-                feature["labels"] = (
-                    feature["labels"] + remainder if padding_side == "right" else remainder + feature["labels"]
+                if key == 'labels':
+                    pad_token = self.label_pad_token_id
+                elif key == 'replies_ids':
+                    pad_token = self.tokenizer.pad_token_id
+                elif 'attention' in key:
+                    pad_token = 0 
+                remainder = [pad_token] * (max_sequence_length - len(feature[key]))
+                feature[key] = (
+                    feature[key] + remainder if padding_side == "right" else remainder + feature["labels"]
                 )
 
         features = self.tokenizer.pad(

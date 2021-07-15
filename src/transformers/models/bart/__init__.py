@@ -39,6 +39,7 @@ if is_torch_available():
         "BartPretrainedModel",
         "PretrainedBartModel",
         "DoubleEncodedBartForConditionalGeneration",
+        "BartEncoder"
     ]
 
 if is_tf_available():
@@ -63,6 +64,7 @@ if TYPE_CHECKING:
             BartPretrainedModel,
             PretrainedBartModel,
             DoubleEncodedBartForConditionalGeneration,
+            BartEncoder
         )
 
     if is_tf_available():
