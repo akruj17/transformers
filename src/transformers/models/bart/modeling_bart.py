@@ -818,69 +818,69 @@ class BartEncoder(BartPretrainedModel):
             last_hidden_state=hidden_states, hidden_states=encoder_states, attentions=all_attentions
         )
 
-class BartDoubleEncoder(BartPretrainedModel):
-    """
-    Transformer wrapper that independently encodes two separate input sources, and then finally applies a cross
-    attention to both encodings
+# class BartDoubleEncoder(BartPretrainedModel):
+#     """
+#     Transformer wrapper that independently encodes two separate input sources, and then finally applies a cross
+#     attention to both encodings
     
-    Args:
-        config: BartConfig
-        embed_tokens (torch.nn.Embedding): input embedding
-    """
+#     Args:
+#         config: BartConfig
+#         embed_tokens (torch.nn.Embedding): input embedding
+#     """
 
-    def __init__(self, config: BartConfig, embed_tokens: Optional[torch.nn.Embedding] = None):
-        super().__init__(config)
-        self.p_encoder = BartEncoder(config, embed_tokens)
-        self.r_encoder = BartEncoder(config, embed_tokens)
-        self.cross_attn = torch.nn.MultiheadAttention(
-            embed_dim=config.d_model,
-            num_heads=config.encoder_attention_heads,
-            dropout=config.attention_dropout,
-        )
-        self.dropout = config.dropout
-        self.attn_norm = torch.nn.LayerNorm(config.d_model)
-        self.activation_dropout = config.activation_dropout
-        self.fc1 = torch.nn.Linear(config.d_model, config.decoder_ffn_dim)
-        self.fc2 = torch.nn.Linear(config.decoder_ffn_dim, config.d_model)
-        self.final_layer_norm = torch.nn.LayerNorm(config.d_model)
+#     def __init__(self, config: BartConfig, embed_tokens: Optional[torch.nn.Embedding] = None):
+#         super().__init__(config)
+#         self.p_encoder = BartEncoder(config, embed_tokens)
+#         self.r_encoder = BartEncoder(config, embed_tokens)
+#         self.cross_attn = torch.nn.MultiheadAttention(
+#             embed_dim=config.d_model,
+#             num_heads=config.encoder_attention_heads,
+#             dropout=config.attention_dropout,
+#         )
+#         self.dropout = config.dropout
+#         self.attn_norm = torch.nn.LayerNorm(config.d_model)
+#         self.activation_dropout = config.activation_dropout
+#         self.fc1 = torch.nn.Linear(config.d_model, config.decoder_ffn_dim)
+#         self.fc2 = torch.nn.Linear(config.decoder_ffn_dim, config.d_model)
+#         self.final_layer_norm = torch.nn.LayerNorm(config.d_model)
 
-        self.init_weights()
+#         self.init_weights()
 
-    def forward(self, input_ids=None, attention_mask=None, head_mask=None, inputs_embeds=None, output_attentions=None,
-            output_hidden_states=None, return_dict=None):
-        p_input_ids = input_ids[0]
-        r_input_ids = input_ids[1]
-        p_attention_mask = attention_mask
-        r_attention_mask = input_ids[2]
-        p_encoder_outputs = self.p_encoder(p_input_ids, attention_mask=p_attention_mask)[0]
-        r_encoder_outputs = self.r_encoder(r_input_ids, attention_mask=r_attention_mask)[0]
-        query = p_encoder_outputs.transpose(0, 1)
-        kv = r_encoder_outputs.transpose(0, 1)
-        attn_output = self.cross_attn(query, kv, kv)[0].transpose(0,1)
+#     def forward(self, input_ids=None, attention_mask=None, head_mask=None, inputs_embeds=None, output_attentions=None,
+#             output_hidden_states=None, return_dict=None):
+#         p_input_ids = input_ids[0]
+#         r_input_ids = input_ids[1]
+#         p_attention_mask = attention_mask
+#         r_attention_mask = input_ids[2]
+#         p_encoder_outputs = self.p_encoder(p_input_ids, attention_mask=p_attention_mask)[0]
+#         r_encoder_outputs = self.r_encoder(r_input_ids, attention_mask=r_attention_mask)[0]
+#         query = p_encoder_outputs.transpose(0, 1)
+#         kv = r_encoder_outputs.transpose(0, 1)
+#         attn_output = self.cross_attn(query, kv, kv)[0].transpose(0,1)
 
-        residual = p_encoder_outputs
-        hidden_states = F.dropout(attn_output, p=self.dropout, training=self.training)
-        hidden_states = residual + hidden_states
-        hidden_states = self.attn_norm(hidden_states)
-        residual = hidden_states
-        hidden_states = F.gelu(self.fc1(hidden_states))
-        hidden_states = F.dropout(hidden_states, p=self.activation_dropout, training=self.training)
-        hidden_states = self.fc2(hidden_states)
-        hidden_states = F.dropout(hidden_states, p=self.dropout, training=self.training)
-        hidden_states = residual + hidden_states
-        hidden_states = self.final_layer_norm(hidden_states)
+#         residual = p_encoder_outputs
+#         hidden_states = F.dropout(attn_output, p=self.dropout, training=self.training)
+#         hidden_states = residual + hidden_states
+#         hidden_states = self.attn_norm(hidden_states)
+#         residual = hidden_states
+#         hidden_states = F.gelu(self.fc1(hidden_states))
+#         hidden_states = F.dropout(hidden_states, p=self.activation_dropout, training=self.training)
+#         hidden_states = self.fc2(hidden_states)
+#         hidden_states = F.dropout(hidden_states, p=self.dropout, training=self.training)
+#         hidden_states = residual + hidden_states
+#         hidden_states = self.final_layer_norm(hidden_states)
 
-        if hidden_states.dtype == torch.float16 and (
-            torch.isinf(hidden_states).any() or torch.isnan(hidden_states).any()
-        ):
-            clamp_value = torch.finfo(hidden_states.dtype).max - 1000
-            hidden_states = torch.clamp(hidden_states, min=-clamp_value, max=clamp_value)
+#         if hidden_states.dtype == torch.float16 and (
+#             torch.isinf(hidden_states).any() or torch.isnan(hidden_states).any()
+#         ):
+#             clamp_value = torch.finfo(hidden_states.dtype).max - 1000
+#             hidden_states = torch.clamp(hidden_states, min=-clamp_value, max=clamp_value)
         
-        if not return_dict:
-            return (hidden_states,)
-        return BaseModelOutput(
-            last_hidden_state=hidden_states, hidden_states=None, attentions=None
-        )
+#         if not return_dict:
+#             return (hidden_states,)
+#         return BaseModelOutput(
+#             last_hidden_state=hidden_states, hidden_states=None, attentions=None
+#         )
 
 class BartDecoder(BartPretrainedModel):
     """
@@ -1434,18 +1434,18 @@ class BartForConditionalGeneration(BartPretrainedModel):
             )
         return reordered_past
 
-@add_start_docstrings(
-    """
-    Bart for Conditional Generation that incorporates two input sources for encoding layer
-    """,
-    BART_START_DOCSTRING,
-)
-class DoubleEncodedBartForConditionalGeneration(BartForConditionalGeneration):
-    def __init__(self, config: BartConfig):
-        super().__init__(config)
-        # replace encoder with double encoder
-        self.model.encoder = BartDoubleEncoder(config, self.model.shared)
-        self.init_weights()
+# @add_start_docstrings(
+#     """
+#     Bart for Conditional Generation that incorporates two input sources for encoding layer
+#     """,
+#     BART_START_DOCSTRING,
+# )
+# class DoubleEncodedBartForConditionalGeneration(BartForConditionalGeneration):
+#     def __init__(self, config: BartConfig):
+#         super().__init__(config)
+#         # replace encoder with double encoder
+#         self.model.encoder = BartDoubleEncoder(config, self.model.shared)
+#         self.init_weights()
 
 
 @add_start_docstrings(
@@ -1891,3 +1891,84 @@ class BartForCausalLM(BartPretrainedModel):
         for layer_past in past:
             reordered_past += (tuple(past_state.index_select(0, beam_idx) for past_state in layer_past),)
         return reordered_past
+
+### CUSTOM CLASSES
+
+class BartDoubleEncoder(BartPretrainedModel):
+    """
+    Transformer wrapper that independently encodes two separate input sources, and then finally applies a cross
+    attention to both encodings
+    
+    Args:
+        config: BartConfig
+        embed_tokens (torch.nn.Embedding): input embedding
+    """
+    def __init__(self, checkpoint):
+        config = BartConfig.from_pretrained(checkpoint)
+        super().__init__(config)
+        self.cross_attn = torch.nn.MultiheadAttention(
+            embed_dim=config.d_model,
+            num_heads=config.encoder_attention_heads,
+            dropout=config.attention_dropout,
+        )
+        self.dropout = config.dropout
+        self.attn_norm = torch.nn.LayerNorm(config.d_model)
+        self.activation_dropout = config.activation_dropout
+        self.fc1 = torch.nn.Linear(config.d_model, config.decoder_ffn_dim)
+        self.fc2 = torch.nn.Linear(config.decoder_ffn_dim, config.d_model)
+        self.final_layer_norm = torch.nn.LayerNorm(config.d_model)
+
+        self.init_weights()
+        self.p_encoder = BartEncoder.from_pretrained(checkpoint)
+        self.r_encoder = BartEncoder.from_pretrained(checkpoint)
+
+    def forward(self, input_ids=None, replies_ids=None, attention_mask=None, replies_attention_mask=None, 
+            head_mask=None, inputs_embeds=None, output_attentions=None, output_hidden_states=None, return_dict=None):
+        print("***************")
+        print(type(input_ids))
+        print(type(replies_ids))
+        print(input_ids.shape)
+        print(replies_ids.shape)
+        p_encoder_outputs = self.p_encoder(input_ids, attention_mask=attention_mask)[0]
+        r_encoder_outputs = self.r_encoder(replies_ids, attention_mask=replies_attention_mask)[0]
+        query = p_encoder_outputs.transpose(0, 1)
+        kv = r_encoder_outputs.transpose(0, 1)
+        attn_output = self.cross_attn(query, kv, kv)[0].transpose(0,1)
+
+        residual = p_encoder_outputs
+        hidden_states = F.dropout(attn_output, p=self.dropout, training=self.training)
+        hidden_states = residual + hidden_states
+        hidden_states = self.attn_norm(hidden_states)
+        residual = hidden_states
+        hidden_states = F.gelu(self.fc1(hidden_states))
+        hidden_states = F.dropout(hidden_states, p=self.activation_dropout, training=self.training)
+        hidden_states = self.fc2(hidden_states)
+        hidden_states = F.dropout(hidden_states, p=self.dropout, training=self.training)
+        hidden_states = residual + hidden_states
+        hidden_states = self.final_layer_norm(hidden_states)
+        if hidden_states.dtype == torch.float16 and (
+            torch.isinf(hidden_states).any() or torch.isnan(hidden_states).any()
+        ):
+            clamp_value = torch.finfo(hidden_states.dtype).max - 1000
+            hidden_states = torch.clamp(hidden_states, min=-clamp_value, max=clamp_value)
+        if not return_dict:
+            return (hidden_states,)
+        return BaseModelOutput(
+            last_hidden_state=hidden_states, hidden_states=None, attentions=None
+        )
+
+class BartModelWithSeparateEncoding(BartPretrainedModel):
+    def __init__(self, checkpoint):
+        config = BartConfig.from_pretrained(checkpoint)
+        super().__init__(config)
+        self.encoder = BartDoubleEncoder(checkpoint)
+        self.model = BartForConditionalGeneration.from_pretrained(checkpoint)
+
+    def forward(self, input_ids=None, replies_ids=None, attention_mask=None, replies_attention_mask=None, 
+            labels=None, **kwargs):
+        encoder_outputs = self.encoder(input_ids, replies_ids, attention_mask, replies_attention_mask)
+        return self.model(encoder_outputs=encoder_outputs, labels=labels)
+    
+    def generate(self, input_ids=None, replies_ids=None, attention_mask=None, replies_attention_mask=None, **kwargs):
+        encoder_outputs = self.encoder(input_ids, replies_ids, attention_mask, replies_attention_mask, return_dict=True)
+        return self.model.generate(encoder_outputs=encoder_outputs, **kwargs)

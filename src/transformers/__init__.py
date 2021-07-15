@@ -546,7 +546,7 @@ if is_torch_available():
             "BartModel",
             "BartPretrainedModel",
             "PretrainedBartModel",
-            "DoubleEncodedBartForConditionalGeneration",
+            "BartModelWithSeparateEncoding",
             "BartEncoder"
         ]
     )
@@ -2011,7 +2011,7 @@ if TYPE_CHECKING:
             BartModel,
             BartPretrainedModel,
             PretrainedBartModel,
-            DoubleEncodedBartForConditionalGeneration,
+            BartModelWithSeparateEncoding,
             BartEncoder
         )
         from .models.bert import (
