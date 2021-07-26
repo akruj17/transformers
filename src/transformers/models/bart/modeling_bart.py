@@ -84,6 +84,7 @@ def _make_causal_mask(input_ids_shape: torch.Size, dtype: torch.dtype, past_key_
     mask_cond = torch.arange(mask.size(-1))
     mask.masked_fill_(mask_cond < (mask_cond + 1).view(mask.size(-1), 1), 0)
     mask = mask.to(dtype)
+
     if past_key_values_length > 0:
         mask = torch.cat([torch.zeros(tgt_len, past_key_values_length, dtype=dtype), mask], dim=-1)
     return mask[None, None, :, :].expand(bsz, 1, tgt_len, tgt_len + past_key_values_length)
@@ -882,6 +883,7 @@ class BartEncoder(BartPretrainedModel):
 #             last_hidden_state=hidden_states, hidden_states=None, attentions=None
 #         )
 
+
 class BartDecoder(BartPretrainedModel):
     """
     Transformer decoder consisting of *config.decoder_layers* layers. Each layer is a :class:`BartDecoderLayer`
@@ -1160,13 +1162,13 @@ class BartDecoder(BartPretrainedModel):
     BART_START_DOCSTRING,
 )
 class BartModel(BartPretrainedModel):
-    def __init__(self, config: BartConfig):
+    def __init__(self, config: BartConfig, use_encoder=True):
         super().__init__(config)
 
         padding_idx, vocab_size = config.pad_token_id, config.vocab_size
         self.shared = nn.Embedding(vocab_size, config.d_model, padding_idx)
 
-        self.encoder = BartEncoder(config, self.shared)
+        self.encoder = BartEncoder(config, self.shared) if use_encoder else None
         self.decoder = BartDecoder(config, self.shared)
 
         self.init_weights()
@@ -1281,9 +1283,9 @@ class BartForConditionalGeneration(BartPretrainedModel):
     base_model_prefix = "model"
     _keys_to_ignore_on_load_missing = [r"final_logits_bias", r"lm_head\.weight"]
 
-    def __init__(self, config: BartConfig):
+    def __init__(self, config: BartConfig, use_encoder=True):
         super().__init__(config)
-        self.model = BartModel(config)
+        self.model = BartModel(config, use_encoder)
         self.register_buffer("final_logits_bias", torch.zeros((1, self.model.shared.num_embeddings)))
         self.lm_head = nn.Linear(config.d_model, self.model.shared.num_embeddings, bias=False)
 
@@ -1892,6 +1894,7 @@ class BartForCausalLM(BartPretrainedModel):
             reordered_past += (tuple(past_state.index_select(0, beam_idx) for past_state in layer_past),)
         return reordered_past
 
+
 ### CUSTOM CLASSES
 
 class BartDoubleEncoder(BartPretrainedModel):
@@ -1920,17 +1923,12 @@ class BartDoubleEncoder(BartPretrainedModel):
 
         self.init_weights()
         self.p_encoder = BartEncoder.from_pretrained(checkpoint)
-        self.r_encoder = BartEncoder.from_pretrained(checkpoint)
+        # self.r_encoder = BartEncoder.from_pretrained(checkpoint)
 
     def forward(self, input_ids=None, replies_ids=None, attention_mask=None, replies_attention_mask=None, 
             head_mask=None, inputs_embeds=None, output_attentions=None, output_hidden_states=None, return_dict=None):
-        print("***************")
-        print(type(input_ids))
-        print(type(replies_ids))
-        print(input_ids.shape)
-        print(replies_ids.shape)
         p_encoder_outputs = self.p_encoder(input_ids, attention_mask=attention_mask)[0]
-        r_encoder_outputs = self.r_encoder(replies_ids, attention_mask=replies_attention_mask)[0]
+        r_encoder_outputs = self.p_encoder(replies_ids, attention_mask=replies_attention_mask)[0]
         query = p_encoder_outputs.transpose(0, 1)
         kv = r_encoder_outputs.transpose(0, 1)
         attn_output = self.cross_attn(query, kv, kv)[0].transpose(0,1)
@@ -1962,7 +1960,7 @@ class BartModelWithSeparateEncoding(BartPretrainedModel):
         config = BartConfig.from_pretrained(checkpoint)
         super().__init__(config)
         self.encoder = BartDoubleEncoder(checkpoint)
-        self.model = BartForConditionalGeneration.from_pretrained(checkpoint)
+        self.model = BartForConditionalGeneration.from_pretrained(checkpoint, use_encoder=False)
 
     def forward(self, input_ids=None, replies_ids=None, attention_mask=None, replies_attention_mask=None, 
             labels=None, **kwargs):

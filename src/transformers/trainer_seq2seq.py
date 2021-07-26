@@ -164,8 +164,9 @@ class Seq2SeqTrainer(Trainer):
             "synced_gpus": True if is_deepspeed_zero3_enabled() else False,
         }
 
+        no_labels = {k: v for k, v in inputs.items() if k != 'labels'}
         generated_tokens = self.model.generate(
-            **inputs,
+            **no_labels,
             **gen_kwargs,
         )
         # in case the batch is shorter than max length, the output should be padded
