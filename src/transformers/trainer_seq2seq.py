@@ -168,7 +168,7 @@ class Seq2SeqTrainer(Trainer):
             "synced_gpus": True if is_deepspeed_zero3_enabled() else False,
         }
 
-        no_labels = {k: v for k, v in inputs.items() if k != 'labels'}
+        no_labels = {k: v for k, v in inputs.items() if k != 'labels' and k != 'decoder_input_ids'}
         generated_tokens = self.model.generate(
             **no_labels,
             **gen_kwargs,
