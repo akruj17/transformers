@@ -698,6 +698,7 @@ class BartEncoder(BartPretrainedModel):
         output_attentions=None,
         output_hidden_states=None,
         return_dict=None,
+        **kwargs,
     ):
         r"""
         Args:
@@ -855,7 +856,6 @@ class BartDoubleEncoder(BartPretrainedModel):
         return_dict=None,
         **kwargs
     ):
-        print("in double encoder r_input is " + str(type(r_input_ids)))
         p_encoder_outputs = self.p_encoder(input_ids, attention_mask=attention_mask, return_dict=return_dict, **kwargs)[0]
         r_encoder_outputs = self.r_encoder(input_ids=r_input_ids, attention_mask=r_attention_mask, return_dict=return_dict, **kwargs)[0]
         query = p_encoder_outputs.transpose(0, 1)
@@ -1357,7 +1357,6 @@ class BartForConditionalGeneration(BartPretrainedModel):
                 decoder_input_ids = shift_tokens_right(
                     labels, self.config.pad_token_id, self.config.decoder_start_token_id
                 )
-
         outputs = self.model(
             input_ids,
             attention_mask=attention_mask,
