@@ -2041,14 +2041,14 @@ class Trainer:
             ignore_keys=ignore_keys,
             metric_key_prefix=metric_key_prefix,
         )
-
+        num_samples = len(eval_dataloader.dataset)
         total_batch_size = self.args.eval_batch_size * self.args.world_size
         output.metrics.update(
             speed_metrics(
                 metric_key_prefix,
                 start_time,
-                num_samples=output.num_samples,
-                num_steps=math.ceil(output.num_samples / total_batch_size),
+                num_samples=num_samples,
+                num_steps=math.ceil(num_samples / total_batch_size),
             )
         )
 
@@ -2107,13 +2107,14 @@ class Trainer:
         output = eval_loop(
             test_dataloader, description="Prediction", ignore_keys=ignore_keys, metric_key_prefix=metric_key_prefix
         )
+        num_samples = len(test_dataloader.dataset)
         total_batch_size = self.args.eval_batch_size * self.args.world_size
         output.metrics.update(
             speed_metrics(
                 metric_key_prefix,
                 start_time,
-                num_samples=output.num_samples,
-                num_steps=math.ceil(output.num_samples / total_batch_size),
+                num_samples=num_samples,
+                num_steps=math.ceil(num_samples / total_batch_size),
             )
         )
 
@@ -2515,11 +2516,10 @@ class Trainer:
         Returns:
             The url of the commit of your model in the given repository.
         """
+        if not self.args.should_save:
+            return
 
-        if self.args.should_save:
-            self.create_model_card(model_name=self.args.push_to_hub_model_id, **kwargs)
-        # Needs to be executed on all processes for TPU training, but will only save on the processed determined by
-        # self.args.should_save.
+        self.create_model_card(model_name=self.args.push_to_hub_model_id, **kwargs)
         self.save_model()
 
         # Only push from one node.
