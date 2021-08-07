@@ -169,6 +169,7 @@ class Seq2SeqTrainer(Trainer):
         }
 
         no_labels = {k: v for k, v in inputs.items() if k != 'labels' and k != 'decoder_input_ids'}
+        print("About to generate")
         generated_tokens = self.model.generate(
             **no_labels,
             **gen_kwargs,

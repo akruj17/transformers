@@ -23,6 +23,7 @@ import torch.distributed as dist
 from torch import nn
 
 from .file_utils import ModelOutput
+from .modeling_outputs import DoubleEncoderOutput
 from .generation_beam_search import BeamScorer, BeamSearchScorer
 from .generation_logits_process import (
     EncoderNoRepeatNGramLogitsProcessor,
@@ -484,6 +485,10 @@ class GenerationMixin:
             encoder_outputs["last_hidden_state"] = encoder_outputs.last_hidden_state.index_select(
                 0, expanded_return_idx.to(encoder_outputs.last_hidden_state.device)
             )
+            if isinstance(encoder_outputs, DoubleEncoderOutput):
+                encoder_outputs["last_hidden_r_state"] = encoder_outputs.last_hidden_r_state.index_select(
+                    0, expanded_return_idx.to(encoder_outputs.last_hidden_r_state.device)
+                )
             model_kwargs["encoder_outputs"] = encoder_outputs
         return input_ids, model_kwargs
 
