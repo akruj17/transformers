@@ -47,7 +47,7 @@ class BaseModelOutput(ModelOutput):
 
 @dataclass
 class DoubleEncoderOutput(ModelOutput):
-    last_hidden_p_state: torch.FloatTensor = None
+    last_hidden_state: torch.FloatTensor = None
     last_hidden_r_state: torch.FloatTensor = None
     hidden_states: Optional[Tuple[torch.FloatTensor]] = None
     attentions: Optional[Tuple[torch.FloatTensor]] = None
