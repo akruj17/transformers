@@ -1181,7 +1181,7 @@ class BartDoubleEncoderWithCrossAttention(BartPretrainedModel):
         r_hidden_states = self.r_encoder(input_ids=r_input_ids, attention_mask=r_attention_mask, **kwargs)[0]
         
         hidden_states, cross_attn_weights, _ = self.cross_attn(
-                hidden_states=,
+                hidden_states=p_hidden_states,
                 key_value_states=encoder_hidden_states,
                 attention_mask=encoder_attention_mask,
                 layer_head_mask=cross_attn_layer_head_mask,
