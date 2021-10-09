@@ -54,6 +54,7 @@ logger = logging.get_logger(__name__)
 
 _CONFIG_FOR_DOC = "RemBertConfig"
 _TOKENIZER_FOR_DOC = "RemBertTokenizer"
+_CHECKPOINT_FOR_DOC = "google/rembert"
 
 REMBERT_PRETRAINED_MODEL_ARCHIVE_LIST = [
     "google/rembert",
@@ -500,6 +501,7 @@ class RemBertEncoder(nn.Module):
 
         self.embedding_hidden_mapping_in = nn.Linear(config.input_embedding_size, config.hidden_size)
         self.layer = nn.ModuleList([RemBertLayer(config) for _ in range(config.num_hidden_layers)])
+        self.gradient_checkpointing = False
 
     def forward(
         self,
@@ -527,12 +529,11 @@ class RemBertEncoder(nn.Module):
             layer_head_mask = head_mask[i] if head_mask is not None else None
             past_key_value = past_key_values[i] if past_key_values is not None else None
 
-            if getattr(self.config, "gradient_checkpointing", False) and self.training:
+            if self.gradient_checkpointing and self.training:
 
                 if use_cache:
                     logger.warn(
-                        "`use_cache=True` is incompatible with `config.gradient_checkpointing=True`. Setting "
-                        "`use_cache=False`..."
+                        "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
                     )
                     use_cache = False
 
@@ -647,6 +648,7 @@ class RemBertPreTrainedModel(PreTrainedModel):
     config_class = RemBertConfig
     load_tf_weights = load_tf_weights_in_rembert
     base_model_prefix = "rembert"
+    supports_gradient_checkpointing = True
     _keys_to_ignore_on_load_missing = [r"position_ids"]
 
     def _init_weights(self, module):
@@ -665,6 +667,10 @@ class RemBertPreTrainedModel(PreTrainedModel):
             module.bias.data.zero_()
             module.weight.data.fill_(1.0)
 
+    def _set_gradient_checkpointing(self, module, value=False):
+        if isinstance(module, RemBertEncoder):
+            module.gradient_checkpointing = value
+
 
 REMBERT_START_DOCSTRING = r"""
     This model is a PyTorch `torch.nn.Module <https://pytorch.org/docs/stable/nn.html#torch.nn.Module>`_ sub-class. Use
@@ -680,7 +686,7 @@ REMBERT_START_DOCSTRING = r"""
 
 REMBERT_INPUTS_DOCSTRING = r"""
     Args:
-        input_ids (:obj:`torch.LongTensor` of shape :obj:`{0}`):
+        input_ids (:obj:`torch.LongTensor` of shape :obj:`({0})`):
             Indices of input sequence tokens in the vocabulary.
 
             Indices can be obtained using :class:`transformers.RemBertTokenizer`. See
@@ -688,14 +694,14 @@ REMBERT_INPUTS_DOCSTRING = r"""
             details.
 
             `What are input IDs? <../glossary.html#input-ids>`__
-        attention_mask (:obj:`torch.FloatTensor` of shape :obj:`{0}`, `optional`):
+        attention_mask (:obj:`torch.FloatTensor` of shape :obj:`({0})`, `optional`):
             Mask to avoid performing attention on padding token indices. Mask values selected in ``[0, 1]``:
 
             - 1 for tokens that are **not masked**,
             - 0 for tokens that are **masked**.
 
             `What are attention masks? <../glossary.html#attention-mask>`__
-        token_type_ids (:obj:`torch.LongTensor` of shape :obj:`{0}`, `optional`):
+        token_type_ids (:obj:`torch.LongTensor` of shape :obj:`({0})`, `optional`):
             Segment token indices to indicate first and second portions of the inputs. Indices are selected in ``[0,
             1]``:
 
@@ -703,7 +709,7 @@ REMBERT_INPUTS_DOCSTRING = r"""
             - 1 corresponds to a `sentence B` token.
 
             `What are token type IDs? <../glossary.html#token-type-ids>`_
-        position_ids (:obj:`torch.LongTensor` of shape :obj:`{0}`, `optional`):
+        position_ids (:obj:`torch.LongTensor` of shape :obj:`({0})`, `optional`):
             Indices of positions of each input sequence tokens in the position embeddings. Selected in the range ``[0,
             config.max_position_embeddings - 1]``.
 
@@ -714,7 +720,7 @@ REMBERT_INPUTS_DOCSTRING = r"""
             - 1 indicates the head is **not masked**,
             - 0 indicates the head is **masked**.
 
-        inputs_embeds (:obj:`torch.FloatTensor` of shape :obj:`(batch_size, sequence_length, hidden_size)`, `optional`):
+        inputs_embeds (:obj:`torch.FloatTensor` of shape :obj:`({0}, hidden_size)`, `optional`):
             Optionally, instead of passing :obj:`input_ids` you can choose to directly pass an embedded representation.
             This is useful if you want more control over how to convert `input_ids` indices into associated vectors
             than the model's internal embedding lookup matrix.
@@ -772,7 +778,7 @@ class RemBertModel(RemBertPreTrainedModel):
         for layer, heads in heads_to_prune.items():
             self.encoder.layer[layer].attention.prune_heads(heads)
 
-    @add_start_docstrings_to_model_forward(REMBERT_INPUTS_DOCSTRING.format("(batch_size, sequence_length)"))
+    @add_start_docstrings_to_model_forward(REMBERT_INPUTS_DOCSTRING.format("batch_size, sequence_length"))
     @add_code_sample_docstrings(
         tokenizer_class=_TOKENIZER_FOR_DOC,
         checkpoint="rembert",
@@ -829,13 +835,12 @@ class RemBertModel(RemBertPreTrainedModel):
             raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
         elif input_ids is not None:
             input_shape = input_ids.size()
-            batch_size, seq_length = input_shape
         elif inputs_embeds is not None:
             input_shape = inputs_embeds.size()[:-1]
-            batch_size, seq_length = input_shape
         else:
             raise ValueError("You have to specify either input_ids or inputs_embeds")
 
+        batch_size, seq_length = input_shape
         device = input_ids.device if input_ids is not None else inputs_embeds.device
 
         # past_key_values_length
@@ -925,7 +930,7 @@ class RemBertForMaskedLM(RemBertPreTrainedModel):
     def set_output_embeddings(self, new_embeddings):
         self.cls.predictions.decoder = new_embeddings
 
-    @add_start_docstrings_to_model_forward(REMBERT_INPUTS_DOCSTRING.format("(batch_size, sequence_length)"))
+    @add_start_docstrings_to_model_forward(REMBERT_INPUTS_DOCSTRING.format("batch_size, sequence_length"))
     @add_code_sample_docstrings(
         tokenizer_class=_TOKENIZER_FOR_DOC,
         checkpoint="rembert",
@@ -1343,7 +1348,7 @@ class RemBertForTokenClassification(RemBertPreTrainedModel):
 
         self.init_weights()
 
-    @add_start_docstrings_to_model_forward(REMBERT_INPUTS_DOCSTRING.format("(batch_size, sequence_length)"))
+    @add_start_docstrings_to_model_forward(REMBERT_INPUTS_DOCSTRING.format("batch_size, sequence_length"))
     @add_code_sample_docstrings(
         tokenizer_class=_TOKENIZER_FOR_DOC,
         checkpoint="rembert",
@@ -1431,7 +1436,7 @@ class RemBertForQuestionAnswering(RemBertPreTrainedModel):
 
         self.init_weights()
 
-    @add_start_docstrings_to_model_forward(REMBERT_INPUTS_DOCSTRING.format("(batch_size, sequence_length)"))
+    @add_start_docstrings_to_model_forward(REMBERT_INPUTS_DOCSTRING.format("batch_size, sequence_length"))
     @add_code_sample_docstrings(
         tokenizer_class=_TOKENIZER_FOR_DOC,
         checkpoint="rembert",

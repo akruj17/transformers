@@ -976,7 +976,7 @@ class LongformerSelfAttention(nn.Module):
         # attn = torch.einsum('blhs,bshd->blhd', (selected_attn_probs, selected_v))
         # compute attn output only global
         attn_output_only_global = torch.matmul(
-            attn_probs_only_global.transpose(1, 2), value_vectors_only_global.transpose(1, 2)
+            attn_probs_only_global.transpose(1, 2).clone(), value_vectors_only_global.transpose(1, 2).clone()
         ).transpose(1, 2)
 
         # reshape attn probs
@@ -1231,6 +1231,7 @@ class LongformerEncoder(nn.Module):
         super().__init__()
         self.config = config
         self.layer = nn.ModuleList([LongformerLayer(config, layer_id=i) for i in range(config.num_hidden_layers)])
+        self.gradient_checkpointing = False
 
     def forward(
         self,
@@ -1259,7 +1260,7 @@ class LongformerEncoder(nn.Module):
             if output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
-            if getattr(self.config, "gradient_checkpointing", False) and self.training:
+            if self.gradient_checkpointing and self.training:
 
                 def create_custom_forward(module):
                     def custom_forward(*inputs):
@@ -1336,10 +1337,8 @@ class LongformerLMHead(nn.Module):
         self.dense = nn.Linear(config.hidden_size, config.hidden_size)
         self.layer_norm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
 
-        self.decoder = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
+        self.decoder = nn.Linear(config.hidden_size, config.vocab_size)
         self.bias = nn.Parameter(torch.zeros(config.vocab_size))
-
-        # Need a link between the two variables so that the bias is correctly resized with `resize_token_embeddings`
         self.decoder.bias = self.bias
 
     def forward(self, features, **kwargs):
@@ -1352,6 +1351,10 @@ class LongformerLMHead(nn.Module):
 
         return x
 
+    def _tie_weights(self):
+        # To tie those two weights if they get disconnected (on TPU or when the bias is resized)
+        self.bias = self.decoder.bias
+
 
 class LongformerPreTrainedModel(PreTrainedModel):
     """
@@ -1361,6 +1364,7 @@ class LongformerPreTrainedModel(PreTrainedModel):
 
     config_class = LongformerConfig
     base_model_prefix = "longformer"
+    supports_gradient_checkpointing = True
     _keys_to_ignore_on_load_missing = [r"position_ids"]
 
     def _init_weights(self, module):
@@ -1378,6 +1382,10 @@ class LongformerPreTrainedModel(PreTrainedModel):
         elif isinstance(module, nn.LayerNorm):
             module.bias.data.zero_()
             module.weight.data.fill_(1.0)
+
+    def _set_gradient_checkpointing(self, module, value=False):
+        if isinstance(module, LongformerEncoder):
+            module.gradient_checkpointing = value
 
 
 LONGFORMER_START_DOCSTRING = r"""

@@ -39,6 +39,7 @@ import optax
 from flax import jax_utils, traverse_util
 from flax.training import train_state
 from flax.training.common_utils import get_metrics, onehot, shard
+from huggingface_hub import Repository
 from transformers import (
     CONFIG_MAPPING,
     FLAX_MODEL_FOR_MASKED_LM_MAPPING,
@@ -52,6 +53,7 @@ from transformers import (
     is_tensorboard_available,
     set_seed,
 )
+from transformers.file_utils import get_full_repo_name
 from transformers.models.t5.modeling_flax_t5 import shift_tokens_right
 
 
@@ -353,7 +355,8 @@ class FlaxDataCollatorForT5MLM:
             np.random.shuffle(mask_indices)
             first_in_segment = np.pad(mask_indices, [[1, 0]])
             segment_id = np.cumsum(first_in_segment)
-            segment_length = np.asarray(jax.ops.segment_sum(np.ones_like(segment_id), segment_id))
+            # count length of sub segments assuming that list is sorted
+            _, segment_length = np.unique(segment_id, return_counts=True)
             return segment_length
 
         noise_span_lengths = _random_segmentation(num_noise_tokens, num_noise_spans)
@@ -436,6 +439,16 @@ if __name__ == "__main__":
 
     # Set seed before initializing model.
     set_seed(training_args.seed)
+
+    # Handle the repository creation
+    if training_args.push_to_hub:
+        if training_args.hub_model_id is None:
+            repo_name = get_full_repo_name(
+                Path(training_args.output_dir).absolute().name, token=training_args.hub_token
+            )
+        else:
+            repo_name = training_args.hub_model_id
+        repo = Repository(training_args.output_dir, clone_from=repo_name)
 
     # Get the datasets: you can either provide your own CSV/JSON/TXT training and evaluation files (see below)
     # or just provide the name of one of the public datasets available on the hub at https://huggingface.co/datasets/
@@ -720,7 +733,7 @@ if __name__ == "__main__":
     state = jax_utils.replicate(state)
 
     train_time = 0
-    epochs = tqdm(range(num_epochs), desc=f"Epoch ... (1/{num_epochs})", position=0)
+    epochs = tqdm(range(num_epochs), desc="Epoch ... ", position=0)
     for epoch in epochs:
         # ======================== Training ================================
         train_start = time.time()
@@ -790,9 +803,7 @@ if __name__ == "__main__":
                 # save checkpoint after each epoch and push checkpoint to the hub
                 if jax.process_index() == 0:
                     params = jax.device_get(jax.tree_map(lambda x: x[0], state.params))
-                    model.save_pretrained(
-                        training_args.output_dir,
-                        params=params,
-                        push_to_hub=training_args.push_to_hub,
-                        commit_message=f"Saving weights and logs of step {cur_step}",
-                    )
+                    model.save_pretrained(training_args.output_dir, params=params)
+                    tokenizer.save_pretrained(training_args.output_dir)
+                    if training_args.push_to_hub:
+                        repo.push_to_hub(commit_message=f"Saving weights and logs of step {cur_step}", blocking=False)

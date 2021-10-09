@@ -117,6 +117,24 @@ class PegasusModelTester:
         inputs_dict = prepare_pegasus_inputs_dict(config, input_ids, decoder_input_ids)
         return config, inputs_dict
 
+    def get_pipeline_config(self):
+        return PegasusConfig(
+            vocab_size=200,
+            d_model=self.hidden_size,
+            encoder_layers=self.num_hidden_layers,
+            decoder_layers=self.num_hidden_layers,
+            encoder_attention_heads=self.num_attention_heads,
+            decoder_attention_heads=self.num_attention_heads,
+            encoder_ffn_dim=self.intermediate_size,
+            decoder_ffn_dim=self.intermediate_size,
+            dropout=self.hidden_dropout_prob,
+            attention_dropout=self.attention_probs_dropout_prob,
+            max_position_embeddings=200,
+            eos_token_id=self.eos_token_id,
+            bos_token_id=self.bos_token_id,
+            pad_token_id=self.pad_token_id,
+        )
+
     def get_config(self):
         return PegasusConfig(
             vocab_size=self.vocab_size,
@@ -211,6 +229,7 @@ class PegasusModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCas
     all_model_classes = (PegasusModel, PegasusForConditionalGeneration) if is_torch_available() else ()
     all_generative_model_classes = (PegasusForConditionalGeneration,) if is_torch_available() else ()
     is_encoder_decoder = True
+    test_resize_position_embeddings = True
     test_pruning = False
     test_missing_keys = False
 
@@ -508,6 +527,7 @@ class PegasusStandaloneDecoderModelTester:
 class PegasusStandaloneDecoderModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase):
     all_model_classes = (PegasusDecoder, PegasusForCausalLM) if is_torch_available() else ()
     all_generative_model_classes = (PegasusForCausalLM,) if is_torch_available() else ()
+    test_resize_position_embeddings = True
     test_pruning = False
     is_encoder_decoder = False
 

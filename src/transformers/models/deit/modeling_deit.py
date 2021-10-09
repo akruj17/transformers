@@ -93,7 +93,6 @@ class DeiTEmbeddings(nn.Module):
         return embeddings
 
 
-# Copied from transformers.models.vit.modeling_vit.PatchEmbeddings
 class PatchEmbeddings(nn.Module):
     """
     Image to Patch Embedding.
@@ -325,6 +324,7 @@ class DeiTEncoder(nn.Module):
         super().__init__()
         self.config = config
         self.layer = nn.ModuleList([DeiTLayer(config) for _ in range(config.num_hidden_layers)])
+        self.gradient_checkpointing = False
 
     def forward(
         self,
@@ -343,7 +343,7 @@ class DeiTEncoder(nn.Module):
 
             layer_head_mask = head_mask[i] if head_mask is not None else None
 
-            if getattr(self.config, "gradient_checkpointing", False) and self.training:
+            if self.gradient_checkpointing and self.training:
 
                 def create_custom_forward(module):
                     def custom_forward(*inputs):
@@ -385,6 +385,7 @@ class DeiTPreTrainedModel(PreTrainedModel):
 
     config_class = DeiTConfig
     base_model_prefix = "deit"
+    supports_gradient_checkpointing = True
 
     def _init_weights(self, module):
         """Initialize the weights"""
@@ -401,6 +402,10 @@ class DeiTPreTrainedModel(PreTrainedModel):
         elif isinstance(module, nn.LayerNorm):
             module.bias.data.zero_()
             module.weight.data.fill_(1.0)
+
+    def _set_gradient_checkpointing(self, module, value=False):
+        if isinstance(module, DeiTEncoder):
+            module.gradient_checkpointing = value
 
 
 DEIT_START_DOCSTRING = r"""
@@ -466,7 +471,7 @@ class DeiTModel(DeiTPreTrainedModel):
         for layer, heads in heads_to_prune.items():
             self.encoder.layer[layer].attention.prune_heads(heads)
 
-    @add_start_docstrings_to_model_forward(DEIT_INPUTS_DOCSTRING.format("(batch_size, sequence_length)"))
+    @add_start_docstrings_to_model_forward(DEIT_INPUTS_DOCSTRING)
     @replace_return_docstrings(output_type=BaseModelOutputWithPooling, config_class=_CONFIG_FOR_DOC)
     def forward(
         self,
@@ -570,7 +575,7 @@ class DeiTForImageClassification(DeiTPreTrainedModel):
 
         self.init_weights()
 
-    @add_start_docstrings_to_model_forward(DEIT_INPUTS_DOCSTRING.format("batch_size, sequence_length"))
+    @add_start_docstrings_to_model_forward(DEIT_INPUTS_DOCSTRING)
     @replace_return_docstrings(output_type=SequenceClassifierOutput, config_class=_CONFIG_FOR_DOC)
     def forward(
         self,
@@ -707,7 +712,7 @@ class DeiTForImageClassificationWithTeacher(DeiTPreTrainedModel):
 
         self.init_weights()
 
-    @add_start_docstrings_to_model_forward(DEIT_INPUTS_DOCSTRING.format("batch_size, sequence_length"))
+    @add_start_docstrings_to_model_forward(DEIT_INPUTS_DOCSTRING)
     @replace_return_docstrings(output_type=DeiTForImageClassificationWithTeacherOutput, config_class=_CONFIG_FOR_DOC)
     def forward(
         self,
