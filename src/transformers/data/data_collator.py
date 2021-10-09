@@ -527,7 +527,8 @@ class DataCollatorForSeq2Seq:
     def __call__(self, features, return_tensors=None):
         import numpy as np
 
-    def __call__(self, features):
+        if return_tensors is None:
+            return_tensors = self.return_tensors
         for key in features[0].keys():
             if key == 'input_ids' or key == 'attention_mask':
                 continue
